@@ -1,7 +1,4 @@
-CREATE USER celine4 IDENTIFIED BY 1234;
-
-GRANT DBA TO celine4;
-
+DROP TABLE xxbcm_order_mgt CASCADE CONSTRAINTS;
 ------------- // CREATING DB_Prequisite TABLE //------------- 
   CREATE TABLE XXBCM_ORDER_MGT 
    (	
@@ -347,22 +344,14 @@ SET
     invoice_amount = REPLACE(invoice_amount, 'I', '1');
 
 
---UPDATE xxbcm_order_mgt
-SELECT DISTINCT TO_CHAR(order_total_amount, '999,999,999') "Order Total Amount" FROM xxbcm_order_mgt WHERE order_total_amount IS NOT NULL ORDER BY "Order Total Amount" DESC;
-SELECT TO_CHAR(order_total, '999,999,999', '999,999,999.00') "Order Total Amount" FROM testing;
-
-CREATE TABLE testing (
-    order_total VARCHAR2(2000) 
-);
-INSERT INTO testing (order_total) VALUES ('5,819,625');
-select * from testing;
-
-
 ------------- // ALTER DATE COLUMN FROM VARCHER2 TO DATE DATA TYPE //------------- 
 ALTER TABLE xxbcm_order_mgt ADD (new_order_date DATE); -- adding a new column new_order_date
 ALTER TABLE xxbcm_order_mgt ADD (new_invoice_date DATE); -- adding a new column new_invoice_date
 ALTER TABLE xxbcm_order_mgt ADD (new_order_status VARCHAR(10)); 
 ALTER TABLE xxbcm_order_mgt ADD (new_invoice_status VARCHAR(10));
+ALTER TABLE xxbcm_order_mgt ADD (new_order_total_amount NUMBER);
+ALTER TABLE xxbcm_order_mgt ADD (new_order_line_amount NUMBER);
+ALTER TABLE xxbcm_order_mgt ADD (new_invoice_amount NUMBER);
 
 ALTER TABLE xxbcm_order_mgt MODIFY (supplier_name VARCHAR2(100));
 ALTER TABLE xxbcm_order_mgt MODIFY (supp_contact_name VARCHAR2(100));
@@ -379,13 +368,23 @@ UPDATE xxbcm_order_mgt SET
     new_order_status = order_status,
     new_invoice_status = invoice_status;
     
-ALTER TABLE xxbcm_order_mgt DROP (order_date, invoice_date, order_status, invoice_status); -- dropping columns from xxbcm_order_mgt
+UPDATE xxbcm_order_mgt SET
+    new_order_total_amount = TO_CHAR(order_total_amount, '999999999'),
+    new_order_line_amount = TO_CHAR(order_line_amount, '999999999'),
+    new_invoice_amount = TO_CHAR(invoice_amount, '999999999');
+    
+ALTER TABLE xxbcm_order_mgt DROP (
+    order_date, invoice_date, order_status, invoice_status,
+    order_total_amount, order_line_amount, invoice_amount
+); -- dropping columns from xxbcm_order_mgt
+
 ALTER TABLE xxbcm_order_mgt RENAME COLUMN new_order_date TO order_date; -- renaming the new column with the converted date to Order_date
 ALTER TABLE xxbcm_order_mgt RENAME COLUMN new_invoice_date TO invoice_date; -- renaming the new column with the converted date to Invoice_date
 ALTER TABLE xxbcm_order_mgt RENAME COLUMN new_order_status TO order_status;
 ALTER TABLE xxbcm_order_mgt RENAME COLUMN new_invoice_status TO invoice_status;
-
-
+ALTER TABLE xxbcm_order_mgt RENAME COLUMN new_order_total_amount TO order_total_amount;
+ALTER TABLE xxbcm_order_mgt RENAME COLUMN new_order_line_amount TO order_line_amount;
+ALTER TABLE xxbcm_order_mgt RENAME COLUMN new_invoice_amount TO invoice_amount;
 
 
 ------------- // CREATING SUPPLIER TABLE //------------- 
@@ -419,7 +418,7 @@ WHERE x.supplier_name = s.supplier_name;
 ------------- // CREATING INVOICE DETAILS TABLE //------------- 
 CREATE TABLE invoice_details (
     invoice_description VARCHAR2(2000),
-    invoice_amount VARCHAR2(2000),
+    invoice_amount NUMBER,
     invoice_hold_reason VARCHAR2(255),
     invoice_issued_id,
     CONSTRAINT inv_details_to_issued_fk FOREIGN KEY (invoice_issued_id) REFERENCES invoice_issued(invoice_issued_id)
@@ -459,8 +458,8 @@ WHERE x.supplier_name = s.supplier_name;
 ------------- // CREATING ORDER DETAILS TABLE //------------- 
 CREATE TABLE order_details (
     order_description VARCHAR2(2000),
-    order_line_amount VARCHAR2(2000),
-    order_total_amount VARCHAR2(255),
+    order_line_amount NUMBER,
+    order_total_amount NUMBER,
     order_issued_id,
     CONSTRAINT or_details_to_issued_fk FOREIGN KEY (order_issued_id) REFERENCES order_issued(order_issued_id)
 );
@@ -504,8 +503,8 @@ SELECT DISTINCT
     TO_CHAR(TO_DATE(ords.order_date, 'DD-MON-YY'), 'Month DD, YYYY') "Order Period",
     UPPER(s.supplier_name) "Supplier Name",
 --    MAX(ordd.order_total_amount) "Order Total Amount",
-    ords.order_status "Order Status",
-    invi.invoice_ref "Invoice Reference"
+    ords.order_status "Order Status"
+--    invi.invoice_ref "Invoice Reference"
 FROM 
     order_issued ordi, order_stats ords, supplier s, invoice_issued invi, order_details ordd
 WHERE
@@ -514,25 +513,8 @@ WHERE
     AND ordi.order_issued_id = ordd.order_issued_id
     AND s.supplier_id = invi.supplier_id;
     
-    --TESTING question 5 max()
-SELECT
-    ordi.order_ref,
-    ordd.order_total_amount,
-    sq.order_total_amount
-FROM
-    order_issued ordi, order_details ordd 
-    (
-        SELECT 
-            MAX(ordd.order_total_amount) "Order Total Amount" 
-        FROM 
-            order_details ordd 
-        GROUP BY ordd.order_total_amount
-    ) sq    
-        WHERE
-            ordi.order_ref = ordd.order_ref
-            AND ordi.order_ref = sq.order_ref
-            AND ordd.order_total_amount = sq.order_total_amount;  
-            
+    
+--TESTING question 5 max()            
 SELECT 
     ordi.order_ref,
     MAX(ordd.order_total_amount) "Order Total Amount"
@@ -546,12 +528,29 @@ INNER JOIN
     ORDER BY "Order Total Amount" DESC
     FETCH FIRST 1 ROWS ONLY;
 
-SELECT order_ref, order_total_amount "Order Total Amount" FROM xxbcm_order_mgt WHERE order_total_amount IS NOT NULL ORDER BY order_total_amount DESC;
+
+--UPDATE xxbcm_order_mgt
+--SELECT DISTINCT TO_NUMBER(order_total_amount, '999999999') "Order Total Amount" FROM xxbcm_order_mgt WHERE order_total_amount IS NOT NULL ORDER BY "Order Total Amount" DESC;
+--SELECT TO_CHAR(order_total, '999,999,999', '999,999,999.00') "Order Total Amount" FROM testing;
+--
+--CREATE TABLE testing (
+--    order_total VARCHAR2(2000) 
+--);
+--drop table testing;
+--INSERT INTO testing (order_total) VALUES ('5,819,625');
+--select * from testing;
+
    
 ------------- // QUESTION 6 //------------- 
 SELECT DISTINCT
     s.supplier_name "Supplier Name",
-    s.supp_contact_name "Supplier Contact Name"
+    s.supp_contact_name "Supplier Contact Name",
+--    s.supp_contact_number "Supplier Contact No. 1",
+--    s.supp_contact_number "Supplier Contact No. 2",
+    TO_CHAR(ordd.order_total_amount, '99,999,990.00') "Order Total Amount"
 FROM 
-    supplier s;
+    supplier s, order_details ordd, order_issued ordi
+WHERE
+    s.supplier_id = ordi.supplier_id
+    AND ordi.order_issued_id = ordd.order_issued_id;
 
